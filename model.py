@@ -45,6 +45,7 @@ class ResNet(nn.Module):
     def __init__(self, block, num_blocks, num_classes=10, predict=True):
         super(ResNet, self).__init__()
         self.in_planes = 64
+        self.predict = predict
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
                                stride=1, padding=1, bias=False)
@@ -71,7 +72,7 @@ class ResNet(nn.Module):
         out = self.layer4(out)
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
-        if predict:
+        if self.predict:
             out = self.linear(out)
         return out
 

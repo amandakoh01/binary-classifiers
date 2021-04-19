@@ -1,33 +1,29 @@
-# tensorboard --logdir=runs
+import os
 
 import torch
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
 from torch.utils.tensorboard import SummaryWriter
 
-import torchvision
-
-import os
-import argparse
-
 from model import ResNet50
-from datasets import CreateDatasets, CreateSubDatasets
+from datasets import BinaryDatasets, MultiwayDatasets, MultiwaySubDatasets, SampledTestSets
 from engine import train_one_epoch, test
 
-def train(positive_class, num_epochs=200, resume=False):
+def train(positive_class, negative_classes, num_epochs=200, resume=False):
     writer = SummaryWriter()
 
-    print(f"Training {positive_class} classifier...")
+    # print(f"Training {positive_class} classifier...")
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    directory = f"results/{positive_class}"
+    directory = f"checkpoints/4way/{positive_class}"
+    # directory = "checkpoints/4way"
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
     # Data
     print('==> Preparing data...')
-    trainloader, testloader = CreateSubDatasets([positive_class])
+    trainloader, testloader = BinaryDatasets([positive_class], negative_classes)
 
     # Create model, criterion and optimizer
     print(f'==> Building model...')
@@ -48,19 +44,23 @@ def train(positive_class, num_epochs=200, resume=False):
         optimizer.load_state_dict(checkpoint['optim'])
         start_epoch = checkpoint['epoch'] + 1
         best_acc = torch.load(f'{directory}/best_ckpt.pth')['acc']
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[60, 70, 75, 85, 95], gamma=0.1, last_epoch=checkpoint['epoch'], verbose=True)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[45, 60, 70, 75, 90, 110],
+                                                         gamma=0.1, verbose=True,
+                                                         last_epoch=checkpoint['epoch'])
 
     # create history file
     else:
         best_acc = 0
         start_epoch = 0
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[60, 70, 75, 90], gamma=0.1, verbose=True)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[75, 125, 150],
+                                                         gamma=0.1, verbose=True)
         with open(f"{directory}/history.txt", "w") as f:
             f.write("epoch,train_loss,train_acc,test_loss,test_acc\n")
-    
+
     # loop through number of epochs
     for epoch in range(start_epoch, num_epochs):
-        train_loss, train_acc = train_one_epoch(net, optimizer, criterion, trainloader, epoch, device)
+        train_loss, train_acc = train_one_epoch(net, optimizer, criterion, 
+                                                trainloader, epoch, device)
         test_loss, test_acc = test(net, criterion, testloader, device)
 
         # save losses and accuracies into txt file
@@ -75,7 +75,6 @@ def train(positive_class, num_epochs=200, resume=False):
             'optim': optimizer.state_dict()
         }
         torch.save(state, f'{directory}/last_ckpt.pth')
-        
         if test_acc > best_acc:
             torch.save(state, f'{directory}/best_ckpt.pth')
             best_acc = test_acc
@@ -89,11 +88,9 @@ def train(positive_class, num_epochs=200, resume=False):
 
     writer.close()
 
-def train_all():
-    # theoretically, what is possible:
-    # this will train 10 separate models with n epochs each, with each model saving to results/class_name
-    classes = ("automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck", "airplane")
-    for class_ in classes:
-        train(class_, 80)
 
-train("cat", 100, True)
+if __name__ == '__main__':
+    train('airplane', ['automobile', 'ship', 'truck'], 80)
+    # train('automobile', ['airplane', 'ship', 'truck'], 80)
+    # train('ship', ['automobile', 'airplane', 'truck'], 80)
+    # train('truck', ['automobile', 'ship', 'airplane'], 80)

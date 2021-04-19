@@ -3,15 +3,18 @@ from tqdm import tqdm
 import torch
 import torch.backends.cudnn as cudnn
 
-from datasets import CreateDatasets
+from datasets import BinaryDatasets, MultiwayDatasets, MultiwaySubDatasets, SampledTestSets
 from model import ResNet50
 
 from cfg import *
 
 # load one model -> run through the entire test dataset -> next model
 
+classes = ['airplane', 'automobile', 'ship', 'truck']
+
 def ensemble_eval():
-    _, testloader = CreateDatasets()
+    _, testloader = MultiwayDatasets()
+    # _, testloader = MultiwaySubDatasets(['airplane', 'automobile', 'ship', 'truck'])
 
     net = ResNet50(2)
     net.to("cuda")
@@ -79,13 +82,18 @@ def ensemble_eval():
     return accuracy
 
 def predict_with_one_net(net, class_number, scores, testloader):
-
     with torch.no_grad():
         for batch_idx, (inputs, _) in enumerate(testloader):
             inputs.to("cuda")
 
             outputs = net(inputs)
 
-            scores[batch_idx * 100 : (batch_idx + 1) * 100, class_number] = outputs[:, 1]
+            n = len(inputs)
+
+            scores[batch_idx * n : (batch_idx + 1) * n, class_number] = outputs[:, 1]
 
     return scores
+
+
+if __name__ = '__main__':
+    print(ensemble_eval())
