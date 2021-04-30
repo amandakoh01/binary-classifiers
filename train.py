@@ -9,15 +9,14 @@ from model import ResNet50
 from datasets import BinaryDatasets, MultiwayDatasets, MultiwaySubDatasets, SampledTestSets
 from engine import train_one_epoch, test
 
-def train(positive_class, negative_classes, num_epochs=200, resume=False):
-    writer = SummaryWriter()
+import cfg
 
-    # print(f"Training {positive_class} classifier...")
+def train_binary(tag, positive_class, negative_classes=None, num_epochs=200, resume=False):
+    print(f"Training {positive_class} classifier...")
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    directory = f"checkpoints/4way/{positive_class}"
-    # directory = "checkpoints/4way"
+    directory = f"checkpoints/{tag}/{positive_class}"
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
@@ -28,6 +27,30 @@ def train(positive_class, negative_classes, num_epochs=200, resume=False):
     # Create model, criterion and optimizer
     print(f'==> Building model...')
     net = ResNet50(2)
+
+    _train(num_epochs, resume, net, device, directory, trainloader, testloader)
+
+def train_multiway(tag, classes, num_epochs=200, resume=False):
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    directory = f"checkpoints/{tag}"
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
+
+    # Data
+    print('==> Preparing data...')
+    trainloader, testloader = MultiwaySubDatasets(classes)
+
+    # Create model, criterion and optimizer
+    print(f'==> Building model...')
+    net = ResNet50(len(classes))
+
+    _train(num_epochs, resume, net, device, directory, trainloader, testloader)
+
+def _train(num_epochs, resume, net, device, directory, trainloader, testloader):
+    writer = SummaryWriter()
+
     net = net.to(device)
     if device == 'cuda':
         net = torch.nn.DataParallel(net)
@@ -44,7 +67,7 @@ def train(positive_class, negative_classes, num_epochs=200, resume=False):
         optimizer.load_state_dict(checkpoint['optim'])
         start_epoch = checkpoint['epoch'] + 1
         best_acc = torch.load(f'{directory}/best_ckpt.pth')['acc']
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[45, 60, 70, 75, 90, 110],
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[60, 70, 75, 80, 85, 95],
                                                          gamma=0.1, verbose=True,
                                                          last_epoch=checkpoint['epoch'])
 
@@ -52,7 +75,7 @@ def train(positive_class, negative_classes, num_epochs=200, resume=False):
     else:
         best_acc = 0
         start_epoch = 0
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[75, 125, 150],
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[60, 80, 100, 150],
                                                          gamma=0.1, verbose=True)
         with open(f"{directory}/history.txt", "w") as f:
             f.write("epoch,train_loss,train_acc,test_loss,test_acc\n")
@@ -90,7 +113,4 @@ def train(positive_class, negative_classes, num_epochs=200, resume=False):
 
 
 if __name__ == '__main__':
-    train('airplane', ['automobile', 'ship', 'truck'], 80)
-    # train('automobile', ['airplane', 'ship', 'truck'], 80)
-    # train('ship', ['automobile', 'airplane', 'truck'], 80)
-    # train('truck', ['automobile', 'ship', 'airplane'], 80)
+    train_multiway("8way", cfg.CLASSES_TO_RUN)
